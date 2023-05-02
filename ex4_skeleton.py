@@ -114,7 +114,9 @@ class DnsHandler(object):
         @param pkt DNS request from target.
         @return DNS response to pkt, source IP changed.
         """
-        pass
+        res = sr1(pkt)
+        res[IP].src = NETWORK_DNS_SERVER_IP
+        return res
 
     def get_spoofed_dns_response(self, pkt: scapy.packet.Packet, to: str) -> scapy.packet.Packet:
         """
@@ -136,7 +138,7 @@ class DnsHandler(object):
         @param pkt DNS request from target.
         @return string describing the choice made
         """
-        pass
+        print(pkt[DNSRR].rrname)
 
     def run(self) -> None:
         """
