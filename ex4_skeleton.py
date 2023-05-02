@@ -49,7 +49,8 @@ class ArpSpoofer(object):
         If not initialized yet, sends an ARP request to the target and waits for a response.
         @return the mac address of the target.
         """
-        pass
+        response = scapy.srp(ARP(op=ARP.who_has, pdst=DOOFENSHMIRTZ_IP), timeout=2, verbose=0)[0]
+        print(response.summary())
 
     def spoof(self) -> None:
         """
