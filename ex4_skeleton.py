@@ -180,12 +180,35 @@ class DnsHandler(object):
         self.process.start()
 
 
+class ArpSpoofDetect:
+    def __init__(self):
+        self.found = False
+        self.attacker_ip = None
+        self.process = None
+
+    def check_pkt(self, packet):
+        if ARP in packet and packet[ARP].op == 2:
+            # looking for arp responses
+            if packet[ARP].hwsrc != packet[ARP].hwdst:
+                print(f"ARP Spoofing detected: Source {packet[ARP].psrc} is using {packet[ARP].hwsrc}")
+                self.found = True
+
+    def run(self) -> None:
+        scapy.sniff(filter="arp", prn=self.check_pkt, store=0)
+
+    def start(self) -> None:
+        p = mp.Process(target=self.run)
+        self.process = p
+        self.process.start()
+
+
 if __name__ == "__main__":
-    print(scapy.get_if_list())
     plist = []
     spoofer = ArpSpoofer(plist, DOOFENSHMIRTZ_IP, NETWORK_DNS_SERVER_IP)
     server = DnsHandler(plist, SPOOF_DICT)
+    detector = ArpSpoofDetect()
 
     print("Starting sub-processes...")
-    server.start()
-    spoofer.start()
+    # server.start()
+    # spoofer.start()
+    detector.start()
