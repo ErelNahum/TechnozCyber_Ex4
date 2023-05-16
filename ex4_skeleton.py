@@ -187,8 +187,8 @@ class DnsHandler(object):
         print(self.get_real_dns_response(pkt))
         return ''
         scapy.send(self.get_real_dns_response(pkt), iface=IFACE)
-        #return f"[DNS_SPOOF] found a DNS request to {pkt['DNS Question Record'].qname} and handled it correctly"
-        return ''
+        return f"[DNS_SPOOF] found a DNS request to {pkt['DNS Question Record'].qname} and handled it correctly"
+
     def run(self) -> None:
         """
         Main loop of the process. Sniffs for packets on the interface and sends DNS
@@ -223,6 +223,10 @@ class ArpSpoofDetect:
             if packet[ARP].hwsrc != packet[ARP].hwdst:
                 print(f"ARP Spoofing detected: Source {packet[ARP].psrc} is using {packet[ARP].hwsrc}")
                 self.found = True
+                self.attacker_ip = packet[ARP].psrc
+
+    def get_attacker(self):
+        return f"Being attacked using ARP-spoofing from {self.attacker_ip}"
 
     def run(self) -> None:
         scapy.sniff(filter="arp", prn=self.check_pkt, store=0)
@@ -242,4 +246,4 @@ if __name__ == "__main__":
     print("Starting sub-processes...")
     server.start()
     spoofer.start()
-    #detector.start()
+    # detector.start()
